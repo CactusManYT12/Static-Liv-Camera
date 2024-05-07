@@ -1,0 +1,82 @@
+using System;
+using System.Collections;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using UnityEngine;
+using MelonLoader;
+using RUMBLE.Players;
+using RumbleModdingAPI;
+using RUMBLE.Players.Subsystems;
+using System.Diagnostics;
+using RumbleModdingFramework;
+
+namespace LivStaticCamera
+{
+    public class LivStaticCameraClass : MelonMod
+    {
+        public GameObject StaticLivCam;
+        public GameObject PlayerLiv;
+
+        public GameObject MainCameraModel;
+
+        public bool WaitforLivCamera = false;
+
+        public Stopwatch Stopwatch = new Stopwatch();
+
+        public override void OnSceneWasLoaded(int buildIndex, string sceneName)
+        {
+            if (sceneName == "Gym" || sceneName == "Park" || sceneName == "Map1" || sceneName == "Map2")
+            {
+                Stopwatch.Stop();
+                Stopwatch.Restart();
+                Stopwatch.Start();
+            }
+
+            using (System.IO.Stream bundleStream = MelonAssembly.Assembly.GetManifestResourceStream("LivStaticCamera.CameraModel"))
+            {
+                byte[] bundleBytes = new byte[bundleStream.Length];
+                bundleStream.Read(bundleBytes, 0, bundleBytes.Length);
+                AssetBundleLoader.AssetBundle bundle = AssetBundleLoader.AssetBundle.LoadFromMemory(bundleBytes);
+                MainCameraModel = UnityEngine.Object.Instantiate(bundle.LoadAsset<GameObject>("Camera")); // replace with object name
+            }
+            UnityEngine.Object.DontDestroyOnLoad(MainCameraModel);
+        }
+
+        public void SetupLivCamera()
+        {
+            StaticLivCam = new GameObject();
+            StaticLivCam.name = "LivCam";
+
+            PlayerLiv = Calls.Managers.GetPlayerManager().localPlayer.Controller.transform.GetChild(8).gameObject;
+
+            StaticLivCam.AddComponent<PlayerController>();
+            StaticLivCam.GetComponent<PlayerController>().Active = false;
+
+            PlayerLiv.GetComponent<LIV.SDK.Unity.LIV>().stage = StaticLivCam.transform;
+            PlayerLiv.GetComponent<PlayerLIV>().parentController = StaticLivCam.GetComponent<PlayerController>();
+
+            Stopwatch.Stop();
+        }
+
+        public void SetupCameraModel()
+        {
+            MainCameraModel.name = "CameraModel";
+            MainCameraModel.transform.parent = StaticLivCam.transform;
+            MainCameraModel.transform.localScale = new Vector3(10, 10, 10);
+            MainCameraModel.transform.rotation = Quaternion.Euler(270, 180, 0);
+            MainCameraModel.transform.localPosition = Vector3.zero;
+        }
+
+        public override void OnLateUpdate()
+        {
+            if (Stopwatch.IsRunning)
+            {
+                if (Stopwatch.ElapsedMilliseconds >= 1000)
+                {
+                    SetupLivCamera();
+                }
+            }
+        }
+    }
+}
