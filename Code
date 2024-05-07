@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -9,7 +10,9 @@ using RUMBLE.Players;
 using RumbleModdingAPI;
 using RUMBLE.Players.Subsystems;
 using System.Diagnostics;
-using RumbleModdingFramework;
+using RumbleModUI;
+using static RootMotion.FinalIK.GenericPoser;
+using UnityEngine.InputSystem;
 
 namespace LivStaticCamera
 {
@@ -17,23 +20,50 @@ namespace LivStaticCamera
     {
         public GameObject StaticLivCam;
         public GameObject PlayerLiv;
-
+        public GameObject Liv;
         public GameObject MainCameraModel;
+        public GameObject CameraParent;
 
-        public bool WaitforLivCamera = false;
+        public Vector3 PositonWanted;
+
+        public Vector3 RotationWanted;
 
         public Stopwatch Stopwatch = new Stopwatch();
 
+        public UI ModUIThing = RumbleModUI.RumbleModUIClass.UI_Obj;
+
+        public Mod ModThing = new Mod();
+
+        public ModSetting<string> Baller;
+        public ModSetting<string> Balling;
+
+        private static InputActionMap map = new InputActionMap("Rest Xr Map");
+
+        private static InputAction rightThumbstick = InputActionSetupExtensions.AddAction(map, "Right Joysitck Click", (InputActionType)1, "<XRController>{RightHand}/thumbstickClick", (string)null, (string)null, (string)null, (string)null);
+
+        private static InputAction leftThumbstick = InputActionSetupExtensions.AddAction(map, "Left Joystick Click", (InputActionType)1, "<XRController>{LeftHand}/thumbstickClick", (string)null, (string)null, (string)null, (string)null);
+
+        public override void OnInitializeMelon()
+        {
+            ModThing.ModName = "LivStaticCamera";
+            ModThing.ModVersion = "5.6";
+            ModThing.SetFolder("LivStaticCamera");
+            ModThing.AddToList("Description", ModSetting.AvailableTypes.Description, "", "Balling Baller");
+            Baller = ModThing.AddToList("Position", ModSetting.AvailableTypes.String, "0,0,0", "Put Position you want up there ^");
+            Balling = ModThing.AddToList("Rotation", ModSetting.AvailableTypes.String, "0,0,0", "Put Rotation you want up there ^");
+            ModThing.GetFromFile();
+        }
+
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
-            if (sceneName == "Gym" || sceneName == "Park" || sceneName == "Map1" || sceneName == "Map2")
+            if (sceneName == "Gym" || sceneName == "Park" || sceneName == "Map1" || sceneName == "Map0")
             {
                 Stopwatch.Stop();
                 Stopwatch.Restart();
                 Stopwatch.Start();
             }
 
-            using (System.IO.Stream bundleStream = MelonAssembly.Assembly.GetManifestResourceStream("LivStaticCamera.CameraModel"))
+            using (System.IO.Stream bundleStream = MelonAssembly.Assembly.GetManifestResourceStream("LivStaticCamera.camera"))
             {
                 byte[] bundleBytes = new byte[bundleStream.Length];
                 bundleStream.Read(bundleBytes, 0, bundleBytes.Length);
@@ -41,6 +71,14 @@ namespace LivStaticCamera
                 MainCameraModel = UnityEngine.Object.Instantiate(bundle.LoadAsset<GameObject>("Camera")); // replace with object name
             }
             UnityEngine.Object.DontDestroyOnLoad(MainCameraModel);
+
+            CameraParent = new GameObject();
+
+            UnityEngine.Object.DontDestroyOnLoad(CameraParent);
+
+            CameraParent.gameObject.SetActive(false);
+
+            MainCameraModel.transform.parent = CameraParent.transform;
         }
 
         public void SetupLivCamera()
@@ -51,31 +89,103 @@ namespace LivStaticCamera
             PlayerLiv = Calls.Managers.GetPlayerManager().localPlayer.Controller.transform.GetChild(8).gameObject;
 
             StaticLivCam.AddComponent<PlayerController>();
-            StaticLivCam.GetComponent<PlayerController>().Active = false;
 
             PlayerLiv.GetComponent<LIV.SDK.Unity.LIV>().stage = StaticLivCam.transform;
             PlayerLiv.GetComponent<PlayerLIV>().parentController = StaticLivCam.GetComponent<PlayerController>();
+
+            Liv = PlayerLiv.GetComponent<LIV.SDK.Unity.LIV>().gameObject;
 
             Stopwatch.Stop();
         }
 
         public void SetupCameraModel()
         {
-            MainCameraModel.name = "CameraModel";
-            MainCameraModel.transform.parent = StaticLivCam.transform;
-            MainCameraModel.transform.localScale = new Vector3(10, 10, 10);
-            MainCameraModel.transform.rotation = Quaternion.Euler(270, 180, 0);
-            MainCameraModel.transform.localPosition = Vector3.zero;
+            CameraParent.name = "CameraModel";
+            CameraParent.transform.localScale = new Vector3(10, 10, 10);
+            CameraParent.transform.LookAt(StaticLivCam.transform);
+            CameraParent.transform.position = StaticLivCam.transform.GetChild(0).transform.position;
+
+            MainCameraModel.transform.localRotation = Quaternion.Euler(270, 180, 0);
+            MainCameraModel.transform.localPosition = new Vector3(0, 0, -0.03f);
+            MainCameraModel.transform.localScale = new Vector3(1, 1, 1);
+
+            CameraParent.gameObject.SetActive(true);
+        }
+
+        private bool StringToVector3(string Input, out Vector3 Output)
+        {
+            string[] StringArray = Input.Split(',');
+            float[] FloatArray = new float[StringArray.Length];
+
+            Output = new Vector3();
+
+            if (StringArray.Length != 3) return false;
+            if (!float.TryParse(StringArray[0], out FloatArray[0])) return false;
+            if (!float.TryParse(StringArray[1], out FloatArray[1])) return false;
+            if (!float.TryParse(StringArray[2], out FloatArray[2])) return false;
+
+            Output = new Vector3(FloatArray[0], FloatArray[1], FloatArray[2]);
+
+            return true;
         }
 
         public override void OnLateUpdate()
         {
+            if (ModUIThing.GetInit() && !ModThing.GetUIStatus())
+            {
+                ModUIThing.AddMod(ModThing);
+            }
+
+            if (ModThing.GetSaveStatus())
+            {
+                ModThing.ConfirmSave();
+
+                if (StringToVector3((string) Baller.Value, out PositonWanted))
+                {
+                    StaticLivCam.transform.position = PositonWanted;
+                }
+                else
+                {
+                    Baller.Description = "Value must be" + Environment.NewLine + "float,float,float";
+                    Baller.Value = "0,0,0";
+                    ModUIThing.ForceRefresh();
+                }
+
+                if (StringToVector3((string) Balling.Value, out RotationWanted))
+                {
+                    StaticLivCam.transform.rotation = Quaternion.Euler(RotationWanted);
+                }
+                else
+                {
+                    Baller.Description = "Value must be" + Environment.NewLine + "float,float,float";
+                    Baller.Value = "0,0,0";
+                    ModUIThing.ForceRefresh();
+                }
+            }
+
             if (Stopwatch.IsRunning)
             {
                 if (Stopwatch.ElapsedMilliseconds >= 1000)
                 {
                     SetupLivCamera();
                 }
+            }
+
+            try 
+            {
+                if (Liv.GetComponent<LIV.SDK.Unity.LIV>().enabled)
+                {
+                    SetupCameraModel();
+                }
+            }
+            catch (Exception e)
+            {
+                
+            }
+
+            if (rightThumbstick.ReadValue<float>() == 1f && leftThumbstick.ReadValue<float>() == 1f)
+            {
+                StaticLivCam.transform.position = Calls.Managers.GetPlayerManager().localPlayer.Controller.transform.position;
             }
         }
     }
